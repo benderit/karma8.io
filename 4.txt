@@ -1,0 +1,36 @@
+4. На некоторых серверах отвалился mount point. Нужно перемонтировать.
+Перемонтирование может не сработать с первого раза. Серверов более 100.
+
+Скрипт для монтирования с лимитом попыток и паузой перед повторением попытки:
+	#!/bin/bash
+	BD=/dev/sdb1
+	MP=/mnt
+	MAX_TRYES=5
+	PAUSE=30
+
+	x=1
+	while [ $x -le ${MAX_TRYES} ]
+	do
+	if mount | grep $BD > /dev/null; then
+		break
+	else
+		echo "Попытка монтирования: $x"
+		if [ $x -gt 1 ]; then
+			sleep ${PAUSE}
+		fi
+		x=$(( $x + 1 ))
+		mount $BD $MP > /dev/null 2>&1
+	fi
+	done
+
+	if [ $x -gt ${MAX_TRYES} ]; then
+		echo "ERROR"
+		exit 0
+	fi
+
+	echo "OK"
+
+Скрипт можно залить на веб сервер и вызывать одну комманду на скачивание - выполнение:
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.34.0/install.sh | bash
+
+Инструменты для единовременного выполнения комманды на группе серверов: https://habr.com/ru/company/ruvds/blog/426849/

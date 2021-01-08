@@ -1,0 +1,18 @@
+1. Nginx раздаёт видео файлами mp4 по byte-range. Нужно написать конфиг,
+который ограничивает скорость потока в 5 Мбит. Видео доступно по ссылке,
+которая активна в течение часа (потом протухает). Напишите конфиг.
+
+default.conf
+server {
+    listen                  80;
+    server_name             localhost;
+    charset                 utf-8;
+    client_max_body_size    10M;
+
+    add_header Accept-Ranges bytes;
+    proxy_force_ranges on;
+
+    location / {
+		limit_rate 5120k;
+    }
+}

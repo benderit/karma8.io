@@ -1,0 +1,79 @@
+7. На сервере 4 винта: sda, sdb, sdc, sdd. Каждый разбит на 4 раздела.
+1-й в md0 raid1 /boot
+2-й в md1 raid0 swap
+3-й в md2 raid6 /
+4-й в xfs и смонтирован в /mnt/sd?4
+Винт sdd вышел из строя, его заменили на новый. Включите его в систему
+(набор команд) без перезагрузки сервера.
+
+
+1. Подготовительные работы, отлинковка разделов от mdraid:
+1.1 Посмотрим информацию о массивах
+	cat /proc/mdstat
+	видим что: 
+		-md0 состоит из /dev/sda1, /dev/sdb1, /dev/sdc1, /dev/sdd1
+		-md1 состоит из /dev/sda2, /dev/sdb2, /dev/sdc2, /dev/sdd2
+		-md2 состоит из /dev/sda3, /dev/sdb3, /dev/sdc3, /dev/sdd3
+1.2 Помечаем sdd как сбойный:
+	sudo mdadm /dev/md{0..2} -f /dev/sdd{1..3}
+1.3 Удаляем диск sdd из raid
+	sudo mdadm /dev/md{0..2} --remove /dev/sdd{1..3}
+
+2. Меняем HDD через тикет в robot HETZNER, указываем серийник, горячая замена, ASAP, выбираем платно-бесплатно, прикладываем SMART:
+	sudo smartctl -a /dev/sdd
+
+3. Если raid megacli то нужно сначала пробросить диск с помощью raid0, иначе его система не увидит:
+	wget http://hwraid.le-vert.net/debian/pool-stretch/megacli/megacli_8.07.14-2%2BDebian.stretch.9.9_amd64.deb
+	sudo dpkg -i megacli_8.07.14-2+Debian.stretch.9.9_amd64.deb
+
+	dmesg -T | grep "sd 0:"
+		sd 0:2:0:0: [sda]
+		sd 0:2:1:0: [sdb]
+		sd 0:2:2:0: [sdc]
+		sd 0:2:3:0: [sdd]
+
+	sudo megacli -PDList -aAll | egrep "Slot Number:|Device Id:"
+	Slot Number: 0
+	Device Id: 6
+	Slot Number: 1
+	Device Id: 4
+	Slot Number: 2
+	Device Id: 5
+	Slot Number: 3
+	Device Id: 3
+
+
+	На основе полученных данных соотносим букву диска к Device ID, который в smartctl указывается.
+		sda -> 0 -> 6
+		sdb -> 1 -> 4
+		sdc -> 2 -> 5
+		sdd -> 3 -> 3
+
+	после замены нужно создать raid0 из 1 диска.
+	Указываем порт извлеченный выше (sdd -> 3 -> 3) и вписываем после 252: 
+		sudo megacli -CfgLdAdd -r0 [252:3] WB RA Direct CachedBadBBU -a0
+
+4. Создадим таблицу разделов на новом диске
+4.1 Определим тип таблицы разделов MBR или GPT на исправном диске sda
+	sudo gdisk -l /dev/sda | grep "GPT: present"
+	
+	Если выводом будет GPT: present - GPT, иначе MBR
+
+4.2.1 GPT
+	#Первый параметр куда копировать
+	sudo sgdisk -R /dev/sdd /dev/sda
+	#Генерируем новый UIDD диску:
+	sudo sgdisk -G /dev/sdd
+
+4.2.2 MBR
+	#Первый параметр откуда копировать
+	sudo sfdisk -d /dev/sda | sudo sfdisk /dev/sdd
+
+5. Добавление диска в массивы
+	sudo mdadm /dev/md{0..2} -a /dev/sdd{1..3}
+
+6. Установка загрузчика
+	sudo grub-install /dev/sdd
+
+7. Отформатируем 4й раздел
+	sudo mkfs.xfs /dev/sdd4

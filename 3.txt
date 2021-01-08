@@ -1,0 +1,40 @@
+3. Идёт большой поток запросов на Nginx приводящий к ошибкам 410/403/404.
+Нужно кинуть айпишники, которые генерируют больше 10 запросов с ошибками
+за минуту в бан на 15 минут. Решите любым удобным инструментом.
+
+Связка модуль Nginx limit_req + fail2ban
+модуль даст логи по превышенным лимитам, а fail2ban парсит лог регулярками и банит.
+
+Пример конфига для nginx, лимит 10 запросов с IP в минуту
+/etc/nginx/nginx.conf
+	http {
+		...
+		limit_req_zone $binary_remote_addr zone=fail2ban:10m rate=10r/m;
+		...
+	}
+
+/etc/nginx/sites-enabled/default
+	location / {
+		...
+		error_page 403 404 410 @errors;
+		...
+	}
+	location @errors {
+		limit_req zone=fail2ban burst=10 nodelay;
+		return 503;
+	}
+
+/etc/fail2ban/filter.d/nginx-req-limit.conf
+	[Definition]
+	failregex = ^\s*\[error\] \d+#\d+: \*\d+ limiting requests, excess: [\d\.]+ by zone "[^"]+", client: <HOST>
+	ignoreregex =
+
+/etc/fail2ban/jail.local
+	[nginx-req-limit]
+	enabled = true
+	filter = nginx-req-limit
+	action = iptables-multiport[name=ReqLimit, port="http,https", protocol=tcp]
+	logpath = /var/log/nginx/*error.log
+	findtime = 600
+	bantime = 900
+	maxretry = 10
