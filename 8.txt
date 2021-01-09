@@ -1,0 +1,27 @@
+8. Тоже самое, что №1 но видео лежит в mp4, а отдаётся в HLS. Напишите конфиг.
+https://habr.com/ru/post/162237/
+
+Для реализации нужен модуль rtmp и его дополнение hls. При сборке nginx нужно указать:
+./configure --add-module=/path/to/nginx-rtmp-module --add-module=/path/to/nginx-rtmp-module/hls
+
+Добавить в nginx.conf секцию:
+	rtmp {
+		server {
+			listen 1935;
+			application myapp {
+				live on;
+			}
+		}
+	}
+
+default.conf
+	application myapp {
+		live on;
+		hls on;
+		hls_path /tmp/hls;
+		hls_fragment 5s;
+	}
+	
+	location /hls {
+		root /tmp;
+	}
